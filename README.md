@@ -1,14 +1,18 @@
 # Snake (Python + pygame)
 
-A classic-plus Snake game with deterministic core logic, unit tests, and premium visual polish.
+A classic-plus Snake game with deterministic core logic, unit tests, and premium visuals.
 
 ## Features
 
 - Classic loop: movement, food, growth, score, game-over, restart.
-- Premium V2 visuals: responsive HUD/controls layout, smoother movement interpolation, food/score/death feedback effects.
+- Premium visual UI (menu cards, HUD chips, polished overlays, glow effects).
+- Theme system (3 palettes): cycle with `T`.
+- Audio SFX (menu/start/eat/bonus/death/achievement) with mute and volume controls.
+- Persistent settings in `settings.json` (difficulty, wrap, obstacles, theme, volume, mute).
+- Persistent progression in `stats.json` (games, totals, bests, achievements).
 - Main menu with difficulty presets (Easy / Normal / Hard).
 - Speed ramp based on score (with per-difficulty min speed cap).
-- Persistent high score stored locally in `high_score.txt`.
+- Persistent high score stored in `high_score.txt`.
 - Optional wrap-around walls mode.
 - Optional obstacles mode.
 - Timed bonus food that gives extra points.
@@ -32,6 +36,9 @@ python main.py
 - Up/Down or `1`/`2`/`3`: select difficulty
 - `W`: toggle wrap mode
 - `O`: toggle obstacles mode
+- `T`: cycle theme
+- `X`: mute/unmute audio
+- `-` / `=`: volume down/up
 - Enter/Space: start game
 - Esc: quit
 
@@ -41,6 +48,9 @@ python main.py
 - `P`: pause/resume
 - `R`: restart current run
 - `M`: return to menu
+- `T`: cycle theme
+- `X`: mute/unmute audio
+- `-` / `=`: volume down/up
 - Esc: quit
 
 ## Tests
@@ -49,16 +59,19 @@ python main.py
 python -m unittest -q
 ```
 
+## Runtime files
+
+- `high_score.txt`: best score
+- `settings.json`: saved user settings
+- `stats.json`: cumulative progression and achievements
+
 ## Manual verification checklist
 
-- Bottom controls text never clips at normal window sizes.
-- Snake movement appears smooth between grid ticks.
-- Score chip pulses on food pickup; food pop effects render.
-- Death shows shake + red flash and summary overlay with retry/menu hints.
-- Speed increases as score rises and does not pass configured minimum.
-- High score updates after game-over and persists across restarts.
-- Wrap mode ON allows crossing edges; OFF causes wall game-over.
-- Obstacles mode ON spawns blocks and collisions end the game.
-- Bonus food appears after threshold, expires on timer, and grants bonus points.
-- Pause (`P`) overlay appears and resumes cleanly.
-- Restart (`R`) resets current run with selected mode settings.
+- Theme switching updates both menu and gameplay visuals.
+- Settings persist after restarting the app.
+- Audio reacts to events; mute/volume controls work.
+- Stats and achievements update after completed runs.
+- Bottom controls text does not clip.
+- Snake movement remains smooth between ticks.
+- Wrap/obstacles/difficulty toggles affect gameplay correctly.
+- Pause/restart/menu flow remains stable.
