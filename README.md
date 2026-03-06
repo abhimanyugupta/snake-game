@@ -1,11 +1,11 @@
 # Snake (Python + pygame)
 
-A classic-plus Snake game with deterministic core logic, unit tests, and a premium visual UI pass.
+A classic-plus Snake game with deterministic core logic, unit tests, and premium visual polish.
 
 ## Features
 
 - Classic loop: movement, food, growth, score, game-over, restart.
-- Premium rendering: gradient backdrop, polished menu card, chip-style HUD, glow effects, and cleaner overlays.
+- Premium V2 visuals: responsive HUD/controls layout, smoother movement interpolation, food/score/death feedback effects.
 - Main menu with difficulty presets (Easy / Normal / Hard).
 - Speed ramp based on score (with per-difficulty min speed cap).
 - Persistent high score stored locally in `high_score.txt`.
@@ -16,7 +16,7 @@ A classic-plus Snake game with deterministic core logic, unit tests, and a premi
 ## Install
 
 ```bash
-pip install pygame
+pip install -r requirements.txt
 ```
 
 ## Run
@@ -51,8 +51,10 @@ python -m unittest -q
 
 ## Manual verification checklist
 
-- Menu visuals render with selected difficulty highlight.
-- HUD shows score/high score/speed/mode chips correctly.
+- Bottom controls text never clips at normal window sizes.
+- Snake movement appears smooth between grid ticks.
+- Score chip pulses on food pickup; food pop effects render.
+- Death shows shake + red flash and summary overlay with retry/menu hints.
 - Speed increases as score rises and does not pass configured minimum.
 - High score updates after game-over and persists across restarts.
 - Wrap mode ON allows crossing edges; OFF causes wall game-over.

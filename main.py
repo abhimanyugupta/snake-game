@@ -28,13 +28,13 @@ BOARD_PIXEL_W = GRID_WIDTH * CELL_SIZE
 BOARD_PIXEL_H = GRID_HEIGHT * CELL_SIZE
 WINDOW_PADDING = 20
 TOP_BAR = 96
+CONTROL_AREA_HEIGHT = 72
 FPS = 60
 OBSTACLE_COUNT = 18
 HIGH_SCORE_PATH = Path(__file__).with_name("high_score.txt")
 
 COLOR_TEXT = (236, 238, 246)
 COLOR_TEXT_MUTED = (176, 182, 201)
-COLOR_ACCENT = (116, 211, 169)
 COLOR_ACCENT_ALT = (91, 151, 255)
 COLOR_BG_TOP = (11, 16, 28)
 COLOR_BG_BOTTOM = (21, 33, 45)
@@ -184,6 +184,57 @@ def draw_chip(
     return chip_rect.right + 8
 
 
+def draw_key_hint(
+    surface: pygame.Surface,
+    font: pygame.font.Font,
+    key_text: str,
+    label_text: str,
+    x: int,
+    y: int,
+) -> int:
+    key_label = font.render(key_text, True, COLOR_TEXT)
+    key_rect = pygame.Rect(x, y, key_label.get_width() + 14, key_label.get_height() + 8)
+    pygame.draw.rect(surface, (39, 58, 82), key_rect, border_radius=8)
+    pygame.draw.rect(surface, (102, 131, 167), key_rect, 1, border_radius=8)
+    surface.blit(key_label, (key_rect.x + 7, key_rect.y + 4))
+
+    text_label = font.render(label_text, True, COLOR_TEXT_MUTED)
+    surface.blit(text_label, (key_rect.right + 8, key_rect.y + 4))
+    return key_rect.right + text_label.get_width() + 20
+
+
+def wrap_text(font: pygame.font.Font, text: str, max_width: int) -> list[str]:
+    words = text.split()
+    if not words:
+        return [""]
+
+    lines: list[str] = []
+    current = words[0]
+
+    for word in words[1:]:
+        trial = f"{current} {word}"
+        if font.size(trial)[0] <= max_width:
+            current = trial
+        else:
+            lines.append(current)
+            current = word
+
+    lines.append(current)
+    return lines
+
+
+def ellipsize_text(font: pygame.font.Font, text: str, max_width: int) -> str:
+    if font.size(text)[0] <= max_width:
+        return text
+
+    suffix = "..."
+    trimmed = text
+    while trimmed and font.size(trimmed + suffix)[0] > max_width:
+        trimmed = trimmed[:-1]
+
+    return (trimmed + suffix) if trimmed else suffix
+
+
 def build_background(width_px: int, height_px: int) -> pygame.Surface:
     background = pygame.Surface((width_px, height_px)).convert()
     draw_vertical_gradient(background, pygame.Rect(0, 0, width_px, height_px), COLOR_BG_TOP, COLOR_BG_BOTTOM)
@@ -241,22 +292,88 @@ def build_state(menu: MenuConfig) -> GameState:
     )
 
 
-def board_rect_from_state(state: GameState) -> pygame.Rect:
+def board_rect_from_state(state: GameState, shake_offset: tuple[int, int]) -> pygame.Rect:
     return pygame.Rect(
-        WINDOW_PADDING,
-        TOP_BAR,
+        WINDOW_PADDING + shake_offset[0],
+        TOP_BAR + shake_offset[1],
         state.width * CELL_SIZE,
         state.height * CELL_SIZE,
     )
 
 
-def cell_rect(board_rect: pygame.Rect, cell_x: int, cell_y: int, inset: int) -> pygame.Rect:
+def cell_rect(board_rect: pygame.Rect, cell_x: float, cell_y: float, inset: int) -> pygame.Rect:
     return pygame.Rect(
-        board_rect.x + (cell_x * CELL_SIZE) + inset,
-        board_rect.y + (cell_y * CELL_SIZE) + inset,
+        board_rect.x + int(round(cell_x * CELL_SIZE)) + inset,
+        board_rect.y + int(round(cell_y * CELL_SIZE)) + inset,
         CELL_SIZE - (inset * 2),
         CELL_SIZE - (inset * 2),
     )
+
+
+def interpolate_cell(
+    start: tuple[int, int],
+    end: tuple[int, int],
+    alpha: float,
+    wrap_walls: bool,
+    width: int,
+    height: int,
+) -> tuple[float, float]:
+    sx, sy = start
+    ex, ey = end
+
+    dx = ex - sx
+    dy = ey - sy
+
+    if wrap_walls:
+        if dx > width / 2:
+            dx -= width
+        elif dx < -width / 2:
+            dx += width
+        if dy > height / 2:
+            dy -= height
+        elif dy < -height / 2:
+            dy += height
+
+        return ((sx + dx * alpha) % width, (sy + dy * alpha) % height)
+
+    return (sx + dx * alpha, sy + dy * alpha)
+
+
+def interpolated_snake_positions(
+    state: GameState,
+    previous_state: GameState | None,
+    alpha: float,
+) -> list[tuple[float, float]]:
+    if previous_state is None:
+        return [(float(x), float(y)) for x, y in state.snake]
+
+    if alpha <= 0.0:
+        return [(float(x), float(y)) for x, y in previous_state.snake]
+
+    if alpha >= 1.0:
+        return [(float(x), float(y)) for x, y in state.snake]
+
+    positions: list[tuple[float, float]] = []
+    for idx, segment in enumerate(state.snake):
+        if idx == 0:
+            start = previous_state.snake[0]
+        elif idx - 1 < len(previous_state.snake):
+            start = previous_state.snake[idx - 1]
+        else:
+            start = segment
+
+        positions.append(
+            interpolate_cell(
+                start=start,
+                end=segment,
+                alpha=alpha,
+                wrap_walls=state.wrap_walls,
+                width=state.width,
+                height=state.height,
+            )
+        )
+
+    return positions
 
 
 def draw_menu(
@@ -344,43 +461,81 @@ def draw_menu(
 def draw_game_overlay(
     surface: pygame.Surface,
     board_rect: pygame.Rect,
-    title_font: pygame.font.Font,
     ui_font: pygame.font.Font,
-    title: str,
-    subtitle: str,
+    small_font: pygame.font.Font,
+    state: GameState,
+    difficulty_name: str,
+    high_score: int,
 ) -> None:
     dim_surface = pygame.Surface((board_rect.width, board_rect.height), pygame.SRCALPHA)
     dim_surface.fill((2, 6, 10, 150))
     surface.blit(dim_surface, board_rect.topleft)
 
-    box_rect = pygame.Rect(0, 0, board_rect.width - 120, 108)
+    if state.status == STATUS_PAUSED:
+        box_rect = pygame.Rect(0, 0, board_rect.width - 140, 128)
+        box_rect.center = board_rect.center
+        draw_panel(surface, box_rect, (31, 44, 62), (18, 27, 39), (108, 131, 155), radius=14)
+
+        title_label = ui_font.render("Paused", True, COLOR_TEXT)
+        subtitle_label = small_font.render("Press P to resume", True, COLOR_TEXT_MUTED)
+        surface.blit(title_label, title_label.get_rect(center=(box_rect.centerx, box_rect.y + 38)))
+        surface.blit(subtitle_label, subtitle_label.get_rect(center=(box_rect.centerx, box_rect.y + 76)))
+        draw_key_hint(surface, small_font, "P", "Resume", box_rect.centerx - 40, box_rect.y + 90)
+        return
+
+    box_rect = pygame.Rect(0, 0, board_rect.width - 86, 206)
     box_rect.center = board_rect.center
     draw_panel(surface, box_rect, (31, 44, 62), (18, 27, 39), (108, 131, 155), radius=14)
 
-    title_label = title_font.render(title, True, COLOR_TEXT)
-    subtitle_label = ui_font.render(subtitle, True, COLOR_TEXT_MUTED)
-    surface.blit(title_label, title_label.get_rect(center=(box_rect.centerx, box_rect.y + 35)))
-    surface.blit(subtitle_label, subtitle_label.get_rect(center=(box_rect.centerx, box_rect.y + 74)))
+    title_label = ui_font.render("Game Over", True, COLOR_TEXT)
+    surface.blit(title_label, title_label.get_rect(center=(box_rect.centerx, box_rect.y + 34)))
+
+    summary_1 = small_font.render(f"Score {state.score}   High {high_score}", True, COLOR_TEXT)
+    summary_2 = small_font.render(
+        f"Foods {state.foods_eaten}   Speed {current_tick_ms(state)}ms",
+        True,
+        COLOR_TEXT_MUTED,
+    )
+    mode_text = f"{difficulty_name} | {'Wrap ON' if state.wrap_walls else 'Wrap OFF'} | {'Obstacles ON' if state.obstacle_count > 0 else 'Obstacles OFF'}"
+    summary_3 = small_font.render(mode_text, True, COLOR_TEXT_MUTED)
+
+    surface.blit(summary_1, summary_1.get_rect(center=(box_rect.centerx, box_rect.y + 80)))
+    surface.blit(summary_2, summary_2.get_rect(center=(box_rect.centerx, box_rect.y + 108)))
+    surface.blit(summary_3, summary_3.get_rect(center=(box_rect.centerx, box_rect.y + 132)))
+
+    draw_key_hint(surface, small_font, "R", "Retry", box_rect.x + 84, box_rect.y + 156)
+    draw_key_hint(surface, small_font, "M", "Menu", box_rect.x + 214, box_rect.y + 156)
 
 
 def draw_board(
     surface: pygame.Surface,
     background: pygame.Surface,
     state: GameState,
+    snake_positions: list[tuple[float, float]],
     ui_font: pygame.font.Font,
     small_font: pygame.font.Font,
     difficulty_name: str,
     high_score: int,
     time_seconds: float,
+    food_pops: list[dict[str, float]],
+    score_pulse_ratio: float,
+    shake_offset: tuple[int, int],
 ) -> None:
     surface.blit(background, (0, 0))
 
-    board_rect = board_rect_from_state(state)
+    board_rect = board_rect_from_state(state, shake_offset)
     board_outer = board_rect.inflate(10, 10)
-    hud_rect = pygame.Rect(WINDOW_PADDING, 14, board_rect.width, TOP_BAR - 22)
+    hud_rect = pygame.Rect(WINDOW_PADDING + shake_offset[0], 14 + shake_offset[1], board_rect.width, TOP_BAR - 22)
+    controls_rect = pygame.Rect(
+        WINDOW_PADDING + shake_offset[0],
+        board_rect.bottom + 8,
+        board_rect.width,
+        CONTROL_AREA_HEIGHT - 16,
+    )
 
     draw_panel(surface, hud_rect, (28, 42, 58), (17, 27, 39), (82, 104, 127), radius=14)
     draw_panel(surface, board_outer, (22, 33, 45), (15, 21, 30), (68, 88, 108), radius=12)
+    draw_panel(surface, controls_rect, (24, 37, 52), (17, 24, 36), (66, 87, 108), radius=12)
 
     board_surface = pygame.Surface((board_rect.width, board_rect.height)).convert()
     draw_vertical_gradient(
@@ -405,13 +560,13 @@ def draw_board(
     surface.blit(board_surface, board_rect.topleft)
 
     for obstacle_x, obstacle_y in state.obstacles:
-        rect = cell_rect(board_rect, obstacle_x, obstacle_y, inset=3)
+        rect = cell_rect(board_rect, float(obstacle_x), float(obstacle_y), inset=3)
         pygame.draw.rect(surface, COLOR_OBSTACLE_SHADE, rect, border_radius=6)
         top_half = pygame.Rect(rect.x + 1, rect.y + 1, rect.width - 2, rect.height // 2)
         pygame.draw.rect(surface, COLOR_OBSTACLE, top_half, border_radius=6)
         pygame.draw.rect(surface, (57, 74, 90), rect, 1, border_radius=6)
 
-    for idx, (snake_x, snake_y) in enumerate(state.snake):
+    for idx, (snake_x, snake_y) in enumerate(snake_positions):
         rect = cell_rect(board_rect, snake_x, snake_y, inset=2)
         fill_color = COLOR_SNAKE_HEAD if idx == 0 else COLOR_SNAKE_BODY
         pygame.draw.rect(surface, fill_color, rect, border_radius=8)
@@ -421,7 +576,7 @@ def draw_board(
         pygame.draw.rect(surface, (197, 243, 198, 95), highlight, border_radius=7)
 
     if state.snake:
-        head_x, head_y = state.snake[0]
+        head_x, head_y = snake_positions[0]
         head_rect = cell_rect(board_rect, head_x, head_y, inset=2)
         dx, dy = state.direction
 
@@ -465,7 +620,28 @@ def draw_board(
         pygame.draw.polygon(surface, COLOR_BONUS, diamond)
         pygame.draw.polygon(surface, (255, 240, 196), diamond, 1)
 
-    draw_chip(surface, small_font, f"Score {state.score}", hud_rect.x + 12, hud_rect.y + 10, (30, 53, 72), (88, 120, 153))
+    for effect in food_pops:
+        if effect["duration"] <= 0:
+            continue
+        progress = 1.0 - (effect["ms"] / effect["duration"])
+        progress = max(0.0, min(1.0, progress))
+
+        center = (
+            board_rect.x + int(effect["x"] * CELL_SIZE) + CELL_SIZE // 2,
+            board_rect.y + int(effect["y"] * CELL_SIZE) + CELL_SIZE // 2,
+        )
+        glow_color = COLOR_BONUS_GLOW if effect["bonus"] > 0 else COLOR_FOOD_GLOW
+        ring_radius = 8 + int(progress * 18)
+        alpha = int((1.0 - progress) * 165)
+
+        ring_surface = pygame.Surface((ring_radius * 2, ring_radius * 2), pygame.SRCALPHA)
+        pygame.draw.circle(ring_surface, (glow_color[0], glow_color[1], glow_color[2], alpha), (ring_radius, ring_radius), ring_radius, 2)
+        surface.blit(ring_surface, (center[0] - ring_radius, center[1] - ring_radius))
+
+    score_fill = lerp_color((30, 53, 72), (70, 103, 138), score_pulse_ratio)
+    score_border = lerp_color((88, 120, 153), (145, 188, 228), score_pulse_ratio)
+
+    draw_chip(surface, small_font, f"Score {state.score}", hud_rect.x + 12, hud_rect.y + 10, score_fill, score_border)
     chip_x = draw_chip(
         surface,
         small_font,
@@ -485,12 +661,12 @@ def draw_board(
         (91, 151, 255),
     )
 
-    wrap_text = "Wrap ON" if state.wrap_walls else "Wrap OFF"
-    obstacle_text = "Obstacles ON" if state.obstacle_count > 0 else "Obstacles OFF"
-    bonus_text = f"Bonus {state.bonus_timer_ticks}" if state.bonus_food is not None else "Bonus -"
+    wrap_text_value = "Wrap ON" if state.wrap_walls else "Wrap OFF"
+    obstacle_text_value = "Obstacles ON" if state.obstacle_count > 0 else "Obstacles OFF"
+    bonus_text_value = f"Bonus {state.bonus_timer_ticks}" if state.bonus_food is not None else "Bonus -"
 
-    draw_chip(surface, small_font, wrap_text, chip_x, hud_rect.y + 10, (40, 57, 78), (95, 117, 142))
-    draw_chip(surface, small_font, obstacle_text, hud_rect.x + 12, hud_rect.y + 42, (40, 57, 78), (95, 117, 142))
+    draw_chip(surface, small_font, wrap_text_value, chip_x, hud_rect.y + 10, (40, 57, 78), (95, 117, 142))
+    draw_chip(surface, small_font, obstacle_text_value, hud_rect.x + 12, hud_rect.y + 42, (40, 57, 78), (95, 117, 142))
     draw_chip(
         surface,
         small_font,
@@ -500,16 +676,20 @@ def draw_board(
         (40, 57, 78),
         (95, 117, 142),
     )
-    draw_chip(surface, small_font, bonus_text, hud_rect.x + 312, hud_rect.y + 42, (60, 62, 48), (151, 138, 91))
+    draw_chip(surface, small_font, bonus_text_value, hud_rect.x + 312, hud_rect.y + 42, (60, 62, 48), (151, 138, 91))
 
-    controls = "Arrows/WASD move   P pause   R restart   M menu   Esc quit"
-    controls_label = small_font.render(controls, True, COLOR_TEXT_MUTED)
-    surface.blit(controls_label, (WINDOW_PADDING + 4, board_rect.bottom + 10))
+    controls_text = "Arrows/WASD move  P pause  R restart  M menu  Esc quit"
+    max_controls_width = controls_rect.width - 24
+    control_lines = wrap_text(small_font, controls_text, max_controls_width)
+    if len(control_lines) > 2:
+        control_lines = [control_lines[0], ellipsize_text(small_font, " ".join(control_lines[1:]), max_controls_width)]
 
-    if state.status == STATUS_PAUSED:
-        draw_game_overlay(surface, board_rect, ui_font, small_font, "Paused", "Press P to resume")
-    elif state.status == STATUS_GAME_OVER:
-        draw_game_overlay(surface, board_rect, ui_font, small_font, "Game Over", "Press R to retry or M for menu")
+    for idx, line in enumerate(control_lines):
+        label = small_font.render(line, True, COLOR_TEXT_MUTED)
+        surface.blit(label, (controls_rect.x + 12, controls_rect.y + 8 + idx * 22))
+
+    if state.status in (STATUS_PAUSED, STATUS_GAME_OVER):
+        draw_game_overlay(surface, board_rect, ui_font, small_font, state, difficulty_name, high_score)
 
 
 def main() -> None:
@@ -517,7 +697,7 @@ def main() -> None:
     pygame.display.set_caption("Snake")
 
     width_px = BOARD_PIXEL_W + (WINDOW_PADDING * 2)
-    height_px = TOP_BAR + BOARD_PIXEL_H + WINDOW_PADDING + 34
+    height_px = TOP_BAR + BOARD_PIXEL_H + CONTROL_AREA_HEIGHT + WINDOW_PADDING
 
     screen = pygame.display.set_mode((width_px, height_px))
     clock = pygame.time.Clock()
@@ -531,14 +711,28 @@ def main() -> None:
     menu = MenuConfig()
     screen_mode = "menu"
     state: GameState | None = None
-    elapsed_ms = 0
+    previous_state_for_render: GameState | None = None
+    elapsed_ms = 0.0
 
     high_score = load_high_score()
     game_over_recorded = False
 
+    score_pulse_ms = 0.0
+    death_flash_ms = 0.0
+    shake_ms = 0.0
+    food_pops: list[dict[str, float]] = []
+
     while True:
-        frame_ms = clock.tick(FPS)
+        frame_ms = float(clock.tick(FPS))
         time_seconds = pygame.time.get_ticks() / 1000.0
+
+        score_pulse_ms = max(0.0, score_pulse_ms - frame_ms)
+        death_flash_ms = max(0.0, death_flash_ms - frame_ms)
+        shake_ms = max(0.0, shake_ms - frame_ms)
+
+        for effect in food_pops:
+            effect["ms"] -= frame_ms
+        food_pops = [effect for effect in food_pops if effect["ms"] > 0.0]
 
         if screen_mode == "playing":
             elapsed_ms += frame_ms
@@ -568,18 +762,29 @@ def main() -> None:
                     menu.obstacles_mode = not menu.obstacles_mode
                 elif event.key in (pygame.K_RETURN, pygame.K_SPACE):
                     state = build_state(menu)
+                    previous_state_for_render = None
                     screen_mode = "playing"
-                    elapsed_ms = 0
+                    elapsed_ms = 0.0
                     game_over_recorded = False
+                    food_pops = []
+                    score_pulse_ms = 0.0
+                    death_flash_ms = 0.0
+                    shake_ms = 0.0
             elif state is not None:
                 if event.key == pygame.K_m:
                     screen_mode = "menu"
                     state = None
-                    elapsed_ms = 0
+                    previous_state_for_render = None
+                    elapsed_ms = 0.0
                 elif event.key == pygame.K_r:
                     state = restart(state)
-                    elapsed_ms = 0
+                    previous_state_for_render = None
+                    elapsed_ms = 0.0
                     game_over_recorded = False
+                    food_pops = []
+                    score_pulse_ms = 0.0
+                    death_flash_ms = 0.0
+                    shake_ms = 0.0
                 elif event.key == pygame.K_p:
                     if state.status == STATUS_RUNNING:
                         state = replace(state, status=STATUS_PAUSED)
@@ -590,11 +795,42 @@ def main() -> None:
 
         if screen_mode == "playing" and state is not None:
             while state.status == STATUS_RUNNING:
-                interval_ms = current_tick_ms(state)
+                interval_ms = float(current_tick_ms(state))
                 if elapsed_ms < interval_ms:
                     break
+
                 elapsed_ms -= interval_ms
-                state = tick(state)
+                before_tick = state
+                after_tick = tick(state)
+
+                previous_state_for_render = before_tick
+
+                score_delta = after_tick.score - before_tick.score
+                if score_delta > 0:
+                    score_pulse_ms = 220.0
+
+                    ate_bonus = (
+                        before_tick.bonus_food is not None
+                        and score_delta >= before_tick.bonus_points
+                        and after_tick.bonus_food != before_tick.bonus_food
+                    )
+                    effect_cell = before_tick.bonus_food if ate_bonus else before_tick.food
+                    if effect_cell is not None:
+                        food_pops.append(
+                            {
+                                "x": float(effect_cell[0]),
+                                "y": float(effect_cell[1]),
+                                "ms": 200.0,
+                                "duration": 200.0,
+                                "bonus": 1.0 if ate_bonus else 0.0,
+                            }
+                        )
+
+                if before_tick.status == STATUS_RUNNING and after_tick.status == STATUS_GAME_OVER:
+                    shake_ms = 260.0
+                    death_flash_ms = 220.0
+
+                state = after_tick
 
             if state.status == STATUS_GAME_OVER and not game_over_recorded:
                 if state.score > high_score:
@@ -602,17 +838,48 @@ def main() -> None:
                     save_high_score(high_score)
                 game_over_recorded = True
 
+            if state.status == STATUS_RUNNING and previous_state_for_render is not None:
+                tick_window = max(1.0, float(current_tick_ms(state)))
+                interpolation_alpha = max(0.0, min(1.0, elapsed_ms / tick_window))
+            else:
+                interpolation_alpha = 1.0
+
+            snake_positions = interpolated_snake_positions(
+                state=state,
+                previous_state=previous_state_for_render,
+                alpha=interpolation_alpha,
+            )
+
+            shake_ratio = shake_ms / 260.0 if shake_ms > 0.0 else 0.0
+            amplitude = int(6 * shake_ratio)
+            shake_offset = (0, 0)
+            if amplitude > 0:
+                shake_offset = (
+                    int(math.sin(time_seconds * 90.0) * amplitude),
+                    int(math.cos(time_seconds * 120.0) * max(1, int(amplitude * 0.6))),
+                )
+
             difficulty_name = DIFFICULTIES[menu.difficulty_index]["name"]
             draw_board(
                 surface=screen,
                 background=background,
                 state=state,
+                snake_positions=snake_positions,
                 ui_font=ui_font,
                 small_font=small_font,
                 difficulty_name=difficulty_name,
                 high_score=high_score,
                 time_seconds=time_seconds,
+                food_pops=food_pops,
+                score_pulse_ratio=max(0.0, min(1.0, score_pulse_ms / 220.0)),
+                shake_offset=shake_offset,
             )
+
+            if death_flash_ms > 0.0:
+                flash_alpha = int(140 * (death_flash_ms / 220.0))
+                flash_surface = pygame.Surface((width_px, height_px), pygame.SRCALPHA)
+                flash_surface.fill((170, 35, 35, flash_alpha))
+                screen.blit(flash_surface, (0, 0))
         else:
             draw_menu(
                 surface=screen,
