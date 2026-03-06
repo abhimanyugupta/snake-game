@@ -747,81 +747,113 @@ def draw_menu(
     title_offset = int(math.sin(time_seconds * 2.3) * 3)
     title_label = title_font.render("SNAKE", True, colors["text"])
     subtitle_label = small_font.render("Premium V3", True, colors["text_muted"])
-    surface.blit(title_label, (card_rect.x + 26, card_rect.y + 20 + title_offset))
+    surface.blit(title_label, (card_rect.x + 26, card_rect.y + 18 + title_offset))
     surface.blit(subtitle_label, (card_rect.x + 30, card_rect.y + 72 + title_offset))
+
+    content_left = card_rect.x + 24
+    content_right = card_rect.right - 24
+    content_width = content_right - content_left
+    layout_gap = 16
+    min_left_w = 212
+    min_side_w = 166
+    target_side_w = 212
+    side_w = min(target_side_w, max(min_side_w, content_width - min_left_w - layout_gap))
+    left_w = content_width - side_w - layout_gap
+    left_x = content_left
+    side_rect = pygame.Rect(left_x + left_w + layout_gap, card_rect.y + 126, side_w, card_rect.height - 188)
 
     draw_chip(
         surface,
         small_font,
-        f"High Score {high_score}",
-        card_rect.right - 188,
+        ellipsize_text(small_font, f"High Score {high_score}", 150),
+        side_rect.x + 8,
         card_rect.y + 30,
         colors["control_top"],
         colors["panel_border"],
         colors["text"],
     )
 
-    left_col_w = card_rect.width - 270
-    options_start_y = card_rect.y + 118
+    options_start_y = card_rect.y + 138
+    option_h = 48
+    option_gap = 10
 
     for idx, difficulty in enumerate(DIFFICULTIES):
-        option_rect = pygame.Rect(card_rect.x + 24, options_start_y + idx * 50, left_col_w - 36, 40)
+        option_rect = pygame.Rect(left_x, options_start_y + idx * (option_h + option_gap), left_w, option_h)
         selected = idx == settings.difficulty_index
 
-        fill_top = lerp_color(colors["panel_top"], colors["accent"], 0.32 if selected else 0.05)
-        fill_bottom = lerp_color(colors["panel_bottom"], colors["accent"], 0.22 if selected else 0.0)
+        fill_top = lerp_color(colors["panel_top"], colors["accent"], 0.30 if selected else 0.05)
+        fill_bottom = lerp_color(colors["panel_bottom"], colors["accent"], 0.20 if selected else 0.0)
         border = colors["accent"] if selected else colors["panel_border"]
 
         draw_panel(surface, option_rect, fill_top, fill_bottom, border, radius=12)
-        surface.blit(ui_font.render(f"{idx + 1}. {difficulty['name']}", True, colors["text"]), (option_rect.x + 12, option_rect.y + 6))
-        speed_text = small_font.render(f"{difficulty['base_tick_ms']}ms", True, colors["text_muted"])
-        surface.blit(speed_text, (option_rect.right - speed_text.get_width() - 12, option_rect.y + 10))
 
-    toggle_y = options_start_y + (len(DIFFICULTIES) * 50) + 6
-    draw_chip(
-        surface,
-        small_font,
-        f"W Wrap {'ON' if settings.wrap_walls else 'OFF'}",
-        card_rect.x + 24,
-        toggle_y,
-        colors["control_top"],
-        colors["panel_border"],
-        colors["text"],
-    )
-    draw_chip(
-        surface,
-        small_font,
-        f"O Obstacles {'ON' if settings.obstacles_mode else 'OFF'}",
-        card_rect.x + 200,
-        toggle_y,
-        colors["control_top"],
-        colors["panel_border"],
-        colors["text"],
-    )
+        speed_label = small_font.render(f"{difficulty['base_tick_ms']}ms", True, colors["text_muted"])
+        max_name_w = max(56, option_rect.width - speed_label.get_width() - 32)
+        name_text = ellipsize_text(ui_font, f"{idx + 1}. {difficulty['name']}", max_name_w)
+        name_label = ui_font.render(name_text, True, colors["text"])
+
+        name_y = option_rect.y + (option_rect.height - name_label.get_height()) // 2
+        speed_y = option_rect.y + (option_rect.height - speed_label.get_height()) // 2
+
+        surface.blit(name_label, (option_rect.x + 12, name_y))
+        surface.blit(speed_label, (option_rect.right - speed_label.get_width() - 12, speed_y))
+
+    chip_row_y = options_start_y + len(DIFFICULTIES) * (option_h + option_gap) + 8
+    half_w = (left_w - 8) // 2
+
+    wrap_text_value = ellipsize_text(small_font, f"W Wrap {'ON' if settings.wrap_walls else 'OFF'}", half_w - 18)
+    obstacle_text_value = ellipsize_text(small_font, f"O Obstacles {'ON' if settings.obstacles_mode else 'OFF'}", half_w - 18)
 
     draw_chip(
         surface,
         small_font,
-        f"T Theme: {theme_name(settings)}",
-        card_rect.x + 24,
-        toggle_y + 42,
+        wrap_text_value,
+        left_x,
+        chip_row_y,
         colors["control_top"],
         colors["panel_border"],
         colors["text"],
     )
+    draw_chip(
+        surface,
+        small_font,
+        obstacle_text_value,
+        left_x + half_w + 8,
+        chip_row_y,
+        colors["control_top"],
+        colors["panel_border"],
+        colors["text"],
+    )
+
+    theme_text_value = ellipsize_text(small_font, f"T Theme: {theme_name(settings)}", left_w - 18)
     volume_pct = int(settings.volume * 100)
+    audio_text_value = ellipsize_text(
+        small_font,
+        f"X Audio {'Muted' if settings.muted else f'{volume_pct}%'}  (-/+=vol)",
+        left_w - 18,
+    )
+
     draw_chip(
         surface,
         small_font,
-        f"X Audio {'Muted' if settings.muted else f'{volume_pct}%'}",
-        card_rect.x + 290,
-        toggle_y + 42,
+        theme_text_value,
+        left_x,
+        chip_row_y + 42,
+        colors["control_top"],
+        colors["panel_border"],
+        colors["text"],
+    )
+    draw_chip(
+        surface,
+        small_font,
+        audio_text_value,
+        left_x,
+        chip_row_y + 84,
         colors["control_top"],
         colors["panel_border"],
         colors["text"],
     )
 
-    side_rect = pygame.Rect(card_rect.right - 230, card_rect.y + 116, 206, card_rect.height - 142)
     draw_panel(
         surface,
         side_rect,
@@ -842,9 +874,10 @@ def draw_menu(
         f"Achievements: {len(stats['achievements'])}/{len(ACHIEVEMENT_DEFS)}",
     ]
 
-    sy = side_rect.y + 48
+    sy = side_rect.y + 50
     for line in stat_lines:
-        surface.blit(small_font.render(line, True, colors["text_muted"]), (side_rect.x + 12, sy))
+        txt = ellipsize_text(small_font, line, side_rect.width - 24)
+        surface.blit(small_font.render(txt, True, colors["text_muted"]), (side_rect.x + 12, sy))
         sy += 24
 
     surface.blit(small_font.render("Recent unlocks", True, colors["text"]), (side_rect.x + 12, sy + 8))
@@ -868,10 +901,10 @@ def draw_menu(
 
     helper_y = card_rect.bottom - 88
     for i, line in enumerate(helper_lines):
-        surface.blit(small_font.render(line, True, colors["text_muted"]), (card_rect.x + 24, helper_y + i * 24))
+        text = ellipsize_text(small_font, line, left_w)
+        surface.blit(small_font.render(text, True, colors["text_muted"]), (left_x, helper_y + i * 24))
 
     draw_toasts(surface, small_font, toasts, colors)
-
 
 def draw_game_overlay(
     surface: pygame.Surface,
@@ -1137,8 +1170,18 @@ def main() -> None:
     width_px = BOARD_PIXEL_W + (WINDOW_PADDING * 2)
     height_px = TOP_BAR + BOARD_PIXEL_H + CONTROL_AREA_HEIGHT + WINDOW_PADDING
 
-    screen = pygame.display.set_mode((width_px, height_px))
+    min_window_w = max(560, width_px // 2)
+    min_window_h = max(520, height_px // 2)
+
+    screen = pygame.display.set_mode((width_px, height_px), pygame.RESIZABLE)
+    render_surface = pygame.Surface((width_px, height_px)).convert()
     clock = pygame.time.Clock()
+
+    resize_event_types = {pygame.VIDEORESIZE}
+    for event_name in ("WINDOWRESIZED", "WINDOWSIZECHANGED"):
+        event_type = getattr(pygame, event_name, None)
+        if event_type is not None:
+            resize_event_types.add(event_type)
 
     title_font = pygame.font.SysFont("segoeui", 52, bold=True)
     ui_font = pygame.font.SysFont("segoeui", 24, bold=True)
@@ -1197,6 +1240,14 @@ def main() -> None:
             if event.type == pygame.QUIT:
                 pygame.quit()
                 sys.exit(0)
+
+            if event.type in resize_event_types:
+                event_w = int(getattr(event, "w", screen.get_width()))
+                event_h = int(getattr(event, "h", screen.get_height()))
+                new_w = max(min_window_w, event_w)
+                new_h = max(min_window_h, event_h)
+                screen = pygame.display.set_mode((new_w, new_h), pygame.RESIZABLE)
+                continue
 
             if event.type != pygame.KEYDOWN:
                 continue
@@ -1370,7 +1421,7 @@ def main() -> None:
                 )
 
             draw_board(
-                surface=screen,
+                surface=render_surface,
                 background=get_background(settings.theme_index),
                 settings=settings,
                 state=state,
@@ -1390,10 +1441,10 @@ def main() -> None:
                 flash_alpha = int(140 * (death_flash_ms / 220.0))
                 flash_surface = pygame.Surface((width_px, height_px), pygame.SRCALPHA)
                 flash_surface.fill((colors["death_flash"][0], colors["death_flash"][1], colors["death_flash"][2], flash_alpha))
-                screen.blit(flash_surface, (0, 0))
+                render_surface.blit(flash_surface, (0, 0))
         else:
             draw_menu(
-                surface=screen,
+                surface=render_surface,
                 background=get_background(settings.theme_index),
                 title_font=title_font,
                 ui_font=ui_font,
@@ -1405,9 +1456,27 @@ def main() -> None:
                 time_seconds=time_seconds,
             )
 
+        current_surface = pygame.display.get_surface()
+        if current_surface is not None:
+            screen = current_surface
+        window_w, window_h = screen.get_size()
+        scale = min(window_w / width_px, window_h / height_px)
+        dest_w = max(1, int(width_px * scale))
+        dest_h = max(1, int(height_px * scale))
+
+        if dest_w == width_px and dest_h == height_px:
+            screen.blit(render_surface, (0, 0))
+        else:
+            scaled_surface = pygame.transform.smoothscale(render_surface, (dest_w, dest_h))
+            pad_x = (window_w - dest_w) // 2
+            pad_y = (window_h - dest_h) // 2
+            screen.fill((8, 10, 14))
+            screen.blit(scaled_surface, (pad_x, pad_y))
+
         pygame.display.flip()
 
 
 if __name__ == "__main__":
     main()
+
 

@@ -6,6 +6,7 @@ A classic-plus Snake game with deterministic core logic, unit tests, and premium
 
 - Classic loop: movement, food, growth, score, game-over, restart.
 - Premium visual UI (menu cards, HUD chips, polished overlays, glow effects).
+- Resizable window with aspect-ratio-preserving scaling.
 - Theme system (3 palettes): cycle with `T`.
 - Audio SFX (menu/start/eat/bonus/death/achievement) with mute and volume controls.
 - Persistent settings in `settings.json` (difficulty, wrap, obstacles, theme, volume, mute).
@@ -67,6 +68,7 @@ python -m unittest -q
 
 ## Manual verification checklist
 
+- Window can be resized and the game scales cleanly without overlap.
 - Theme switching updates both menu and gameplay visuals.
 - Settings persist after restarting the app.
 - Audio reacts to events; mute/volume controls work.
@@ -75,3 +77,4 @@ python -m unittest -q
 - Snake movement remains smooth between ticks.
 - Wrap/obstacles/difficulty toggles affect gameplay correctly.
 - Pause/restart/menu flow remains stable.
+
