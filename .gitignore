@@ -9,3 +9,6 @@ venv/
 # editor settings
 .vscode/
 .idea/
+
+# local runtime data
+high_score.txt
